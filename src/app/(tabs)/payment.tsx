@@ -2,6 +2,7 @@ import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
 import { usePayments } from '@/features/payments/usePayments';
+import { SocietyRequired } from '@/features/societies/SocietyRequired';
 import { useStorage } from '@/hooks/useStorage';
 import { useSocietyStore } from '@/store/societyStore';
 import { Image } from 'expo-image';
@@ -19,6 +20,10 @@ export default function PaymentScreen() {
   const { activeSociety } = useSocietyStore();
   const { submitPayment } = usePayments();
   const { uploadImage } = useStorage();
+
+  if (!activeSociety) {
+    return <SocietyRequired title="Contributions" />;
+  }
 
   const pickImage = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({

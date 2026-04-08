@@ -1,4 +1,7 @@
 import { useLedger } from '@/features/ledger/useLedger';
+import { TransactionComments } from '@/features/comments/TransactionComments';
+import { SocietyRequired } from '@/features/societies/SocietyRequired';
+import { useSocietyStore } from '@/store/societyStore';
 import { format } from 'date-fns';
 import { ArrowDownLeft, ArrowUpRight, ExternalLink, FileText, Receipt } from 'lucide-react-native';
 import React, { memo, useCallback } from 'react';
@@ -34,11 +37,11 @@ const HistoryItem = memo(({ item }: { item: any }) => (
       </View>
     </View>
 
-    {item.payment_requests?.note && (
+    {item.reference?.note && (
       <View className="bg-slate-50/80 p-4 rounded-2xl mb-3 flex-row items-start">
         <FileText size={16} color="#94a3b8" />
         <Text className="text-slate-500 text-sm ml-3 flex-1 italic leading-5">
-          "{item.payment_requests.note}"
+          "{item.reference.note}"
         </Text>
       </View>
     )}
@@ -50,9 +53,9 @@ const HistoryItem = memo(({ item }: { item: any }) => (
           Ref: {item.reference_type}
         </Text>
       </View>
-      {item.payment_requests?.proof_url && (
+      {item.reference?.proof_url && (
         <TouchableOpacity 
-          onPress={() => Linking.openURL(item.payment_requests.proof_url)}
+          onPress={() => Linking.openURL(item.reference.proof_url)}
           className="flex-row items-center"
         >
           <Text className="text-primary font-black text-[10px] uppercase mr-2">View Proof</Text>
@@ -60,15 +63,25 @@ const HistoryItem = memo(({ item }: { item: any }) => (
         </TouchableOpacity>
       )}
     </View>
+
+    <TransactionComments
+      referenceType={item.reference_type}
+      referenceId={item.reference_id}
+    />
   </View>
 ));
 
 export default function HistoryScreen() {
+  const { activeSociety } = useSocietyStore();
   const { ledger, isLoadingLedger, refresh } = useLedger();
 
   const renderItem = useCallback(({ item }: { item: any }) => (
     <HistoryItem item={item} />
   ), []);
+
+  if (!activeSociety) {
+    return <SocietyRequired title="History" />;
+  }
 
   return (
     <View className="flex-1 bg-white">

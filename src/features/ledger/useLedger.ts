@@ -10,19 +10,56 @@ export const useLedger = () => {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('ledger_entries')
-        .select(`
-          id,
-          type,
-          amount,
-          reference_type,
-          created_at,
-          payment_requests:reference_id (note, proof_url)
-        `)
+        .select('id, type, amount, reference_id, reference_type, created_at')
         .eq('society_id', activeSociety?.id)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
-      return data || [];
+
+      const entries = data || [];
+      const paymentIds = entries
+        .filter((entry: any) => entry.reference_type === 'payment' && entry.reference_id)
+        .map((entry: any) => entry.reference_id);
+      const expenseIds = entries
+        .filter((entry: any) => entry.reference_type === 'expense' && entry.reference_id)
+        .map((entry: any) => entry.reference_id);
+
+      const paymentMap: Record<string, any> = {};
+      if (paymentIds.length > 0) {
+        const { data: payments, error: paymentsError } = await supabase
+          .from('payment_requests')
+          .select('id, note, proof_url')
+          .in('id', paymentIds);
+
+        if (paymentsError) throw paymentsError;
+        (payments || []).forEach((payment: any) => {
+          paymentMap[payment.id] = payment;
+        });
+      }
+
+      const expenseMap: Record<string, any> = {};
+      if (expenseIds.length > 0) {
+        const { data: expenses, error: expensesError } = await supabase
+          .from('expense_requests')
+          .select('id, title, description, proof_url')
+          .in('id', expenseIds);
+
+        if (expensesError) throw expensesError;
+        (expenses || []).forEach((expense: any) => {
+          expenseMap[expense.id] = expense;
+        });
+      }
+
+      return entries.map((entry: any) => ({
+        ...entry,
+        amount: Number(entry.amount || 0),
+        reference:
+          entry.reference_type === 'payment'
+            ? paymentMap[entry.reference_id] || null
+            : entry.reference_type === 'expense'
+              ? expenseMap[entry.reference_id] || null
+              : null,
+      }));
     },
     enabled: !!activeSociety?.id,
   });

@@ -1,18 +1,20 @@
-import { AdminDashboard } from '@/features/societies/AdminDashboard';
-import { InviteMember } from '@/features/societies/InviteMember';
-import { useSocieties } from '@/features/societies/useSocieties';
+import { Button } from '@/components/ui/Button';
+import { Input } from '@/components/ui/Input';
+import { supabase } from '@/api/supabase';
 import { useAuthStore } from '@/store/authStore';
 import { Image } from 'expo-image';
 import { Bell, ChevronRight, Info, LogOut, Shield, User } from 'lucide-react-native';
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Alert, Platform, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 
 export default function SettingsScreen() {
-  const { user, profile, signOut } = useAuthStore();
-  const { data: societies } = useSocieties();
+  const { user, profile, setProfile, signOut } = useAuthStore();
+  const [displayName, setDisplayName] = useState(profile?.name || '');
+  const [savingProfile, setSavingProfile] = useState(false);
 
-  // Check if user is admin in any society
-  const isAdmin = societies?.some(s => s.role_id === 1 || s.role_id === 2);
+  useEffect(() => {
+    setDisplayName(profile?.name || '');
+  }, [profile?.name]);
 
   const handleSignOut = async () => {
     const performSignOut = async () => {
@@ -61,6 +63,31 @@ export default function SettingsScreen() {
     </TouchableOpacity>
   );
 
+  const handleSaveProfile = async () => {
+    if (!displayName.trim()) {
+      Alert.alert('Error', 'Name cannot be empty');
+      return;
+    }
+
+    setSavingProfile(true);
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .update({ name: displayName.trim() })
+        .eq('id', user?.id)
+        .select('*')
+        .single();
+
+      if (error) throw error;
+      setProfile(data);
+      Alert.alert('Success', 'Profile updated');
+    } catch (error: any) {
+      Alert.alert('Error', error.message || 'Unable to update profile');
+    } finally {
+      setSavingProfile(false);
+    }
+  };
+
   return (
     <ScrollView className="flex-1 bg-white" showsVerticalScrollIndicator={false}>
       <View className="px-6 pt-16 pb-8">
@@ -96,18 +123,22 @@ export default function SettingsScreen() {
           </View>
         </View>
 
-        {/* Admin Dashboard Section */}
-        {isAdmin && (
-          <View className="mb-10">
-            <Text className="text-2xl font-black text-slate-900 mb-6 px-1 tracking-tight">Management</Text>
-            <AdminDashboard />
-          </View>
-        )}
-
-        {/* Invite Section */}
-        <InviteMember />
-
         {/* Settings Menu */}
+        <Text className="text-2xl font-black text-slate-900 mb-6 px-1 tracking-tight">User Profile</Text>
+        <View className="bg-white rounded-[32px] p-5 shadow-xl shadow-slate-100 border border-slate-50 mb-8">
+          <Input
+            label="Display Name"
+            value={displayName}
+            onChangeText={setDisplayName}
+            placeholder="Your name"
+          />
+          <Button
+            title="Save Profile"
+            onPress={handleSaveProfile}
+            loading={savingProfile}
+          />
+        </View>
+
         <Text className="text-2xl font-black text-slate-900 mb-6 px-1 tracking-tight">Preferences</Text>
         <View className="bg-white rounded-[32px] overflow-hidden shadow-xl shadow-slate-100 border border-slate-50 mb-10">
           <SettingItem icon={User} title="Personal Info" subtitle="Update your profile" />

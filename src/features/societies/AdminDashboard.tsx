@@ -13,8 +13,8 @@ export const AdminDashboard = () => {
   const { fetchPendingMembers, manageMember } = useSocieties();
   const { fetchPendingPayments, approvePayment } = usePayments();
 
-  const { data: pendingMembers, isLoading: loadingMembers } = fetchPendingMembers;
-  const { data: pendingPayments, isLoading: loadingPayments } = fetchPendingPayments;
+  const { data: pendingMembers = [], isLoading: loadingMembers } = fetchPendingMembers;
+  const { data: pendingPayments = [], isLoading: loadingPayments } = fetchPendingPayments;
 
   const handleMemberAction = async (memberId: string, status: 'active' | 'removed', name: string) => {
     const actionText = status === 'active' ? 'approve' : 'reject';

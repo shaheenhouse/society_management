@@ -90,7 +90,8 @@ export const usePayments = () => {
         .from('society_members')
         .select('society_id')
         .eq('user_id', user?.id)
-        .in('role_id', [1, 2]);
+        .eq('status', 'active')
+        .in('role_id', [1, 2, 3]);
 
       if (!adminSocieties || adminSocieties.length === 0) return [];
       const societyIds = adminSocieties.map(s => s.society_id);
@@ -99,13 +100,14 @@ export const usePayments = () => {
         .from('payment_requests')
         .select(`
           id,
+          society_id,
           amount,
           note,
           proof_url,
           status,
           created_at,
           profiles:user_id (name),
-          societies:society_id (name)
+          societies:society_id (id, name)
         `)
         .in('society_id', societyIds)
         .eq('status', 'pending')

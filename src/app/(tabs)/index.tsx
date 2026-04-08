@@ -1,7 +1,10 @@
 import { useLedger } from '@/features/ledger/useLedger';
+import { SocietyRequired } from '@/features/societies/SocietyRequired';
 import { SocietySwitcher } from '@/features/societies/SocietySwitcher';
+import { useAuthStore } from '@/store/authStore';
+import { useSocietyStore } from '@/store/societyStore';
 import { format } from 'date-fns';
-import { ArrowDownLeft, ArrowUpRight, ChevronRight, Clock, History, TrendingUp, Wallet } from 'lucide-react-native';
+import { ArrowDownLeft, ArrowUpRight, ChevronRight, Clock, Sparkles, UserCircle2, Wallet } from 'lucide-react-native';
 import React, { memo } from 'react';
 import { RefreshControl, SafeAreaView, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 
@@ -55,7 +58,13 @@ const QuickStat = memo(({ title, amount, color, icon: Icon }: any) => (
 ));
 
 export default function DashboardScreen() {
+  const { activeSociety } = useSocietyStore();
+  const { profile } = useAuthStore();
   const { ledger, stats, isLoadingStats, refresh } = useLedger();
+
+  if (!activeSociety) {
+    return <SocietyRequired title="Dashboard" />;
+  }
 
   return (
     <SafeAreaView className="flex-1 bg-white">
@@ -67,32 +76,41 @@ export default function DashboardScreen() {
       >
         {/* Header Section */}
         <View className="px-6 pt-4 pb-8 bg-white">
-          <View className="flex-row justify-between items-center mb-8">
-            <View>
-              <Text className="text-slate-400 text-xs font-black uppercase tracking-[2px] mb-1">Society Ledger</Text>
-              <Text className="text-3xl font-black text-slate-900">Dashboard</Text>
+          <View className="flex-row items-center mb-8">
+            <View className="bg-primary/10 p-3 rounded-2xl mr-3">
+              <UserCircle2 size={22} color="#10b981" />
             </View>
-            <TouchableOpacity className="bg-slate-50 p-3 rounded-2xl border border-slate-100">
-              <History size={22} color="#64748b" />
-            </TouchableOpacity>
+            <View className="flex-1">
+              <Text className="text-slate-400 text-xs font-black uppercase tracking-[2px] mb-1">Welcome Back</Text>
+              <Text className="text-3xl font-black text-slate-900">{profile?.name || 'Member'}</Text>
+            </View>
+            <View className="bg-slate-100 px-3 py-2 rounded-xl">
+              <Text className="text-slate-500 text-[10px] font-black uppercase">Dashboard</Text>
+            </View>
           </View>
 
           <SocietySwitcher />
         </View>
 
-        {/* Main Balance Card */}
+        {/* Profile + Balance Card */}
         <View className="px-6 -mt-4">
-          <View className="bg-primary p-8 rounded-[40px] shadow-2xl shadow-primary/40 relative overflow-hidden">
+          <View className="bg-primary p-8 rounded-[40px] shadow-2xl shadow-primary/40 relative overflow-hidden mb-4">
             <View className="absolute -right-10 -top-10 w-40 h-40 bg-white/10 rounded-full" />
             <View className="absolute -left-10 -bottom-10 w-20 h-20 bg-white/5 rounded-full" />
             
-            <View className="flex-row items-center mb-4">
-              <View className="bg-white/20 p-2 rounded-lg">
-                <Wallet size={18} color="white" />
+            <View className="flex-row items-center justify-between mb-4">
+              <View className="flex-row items-center">
+                <View className="bg-white/20 p-2 rounded-lg">
+                  <Wallet size={18} color="white" />
+                </View>
+                <Text className="text-white/70 font-black ml-3 uppercase tracking-[2px] text-[10px]">
+                  Current Society Balance
+                </Text>
               </View>
-              <Text className="text-white/70 font-black ml-3 uppercase tracking-[2px] text-[10px]">
-                Total Available Balance
-              </Text>
+              <View className="flex-row items-center">
+                <Sparkles size={14} color="#fff" />
+                <Text className="text-white/80 text-[10px] font-black ml-1 uppercase">Live</Text>
+              </View>
             </View>
             
             <View className="flex-row items-baseline">
@@ -102,15 +120,17 @@ export default function DashboardScreen() {
               </Text>
             </View>
 
-            <View className="flex-row mt-8 pt-6 border-t border-white/10 justify-between">
-              <View className="flex-row items-center">
-                <TrendingUp size={16} color="#ffffff" opacity={0.6} />
-                <Text className="text-white/60 text-xs font-bold ml-2">Up 12% this month</Text>
-              </View>
-              <TouchableOpacity className="bg-white/20 px-4 py-2 rounded-xl">
-                <Text className="text-white text-[10px] font-black uppercase">Details</Text>
-              </TouchableOpacity>
+            <View className="mt-6 bg-white/10 rounded-2xl p-4">
+              <Text className="text-white/70 text-[10px] uppercase font-black tracking-[2px]">You are viewing</Text>
+              <Text className="text-white text-base font-black mt-1">{activeSociety?.name}</Text>
             </View>
+          </View>
+
+          <View className="bg-slate-900 p-5 rounded-[28px] shadow-xl shadow-slate-900/15">
+            <Text className="text-white/50 text-[10px] uppercase font-black tracking-[2px]">Public Audit Promise</Text>
+            <Text className="text-white text-sm mt-2 leading-5">
+              Every approved contribution and expense is visible in history. Members can now add audit comments on each entry.
+            </Text>
           </View>
         </View>
 
@@ -137,7 +157,7 @@ export default function DashboardScreen() {
             <Text className="text-slate-400 text-xs font-bold mt-1">Latest 5 transactions</Text>
           </View>
           <TouchableOpacity>
-            <Text className="text-primary font-black text-sm border-b-2 border-primary/20 pb-1">View All</Text>
+            <Text className="text-primary font-black text-sm border-b-2 border-primary/20 pb-1">History Tab</Text>
           </TouchableOpacity>
         </View>
 

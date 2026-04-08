@@ -196,6 +196,9 @@ CREATE POLICY "View profiles" ON profiles
 CREATE POLICY "Update own profile" ON profiles
     FOR UPDATE USING (auth.uid() = id);
 
+CREATE POLICY "Insert own profile" ON profiles
+    FOR INSERT WITH CHECK (auth.uid() = id);
+
 -- Societies: Public societies are viewable by all, private only by members or creator
 CREATE POLICY "View societies" ON societies
     FOR SELECT USING (
@@ -291,3 +294,137 @@ DROP TRIGGER IF EXISTS society_ledger_on_expense_approved ON expense_requests;
 CREATE TRIGGER society_ledger_on_expense_approved
     AFTER UPDATE OF status ON expense_requests
     FOR EACH ROW EXECUTE PROCEDURE public.approve_expense_and_ledger();
+
+-- -------------------------------------------------------------------
+-- Production Hardening Additions (Performance + Data Integrity)
+-- -------------------------------------------------------------------
+
+-- Ensure one approver can approve once per request
+CREATE UNIQUE INDEX IF NOT EXISTS idx_payment_approvals_unique_approver
+ON payment_approvals (payment_request_id, approved_by);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_expense_approvals_unique_approver
+ON expense_approvals (expense_request_id, approved_by);
+
+-- Fast lookups for society-scoped timeline and dashboards
+CREATE INDEX IF NOT EXISTS idx_ledger_entries_society_created_at
+ON ledger_entries (society_id, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_payment_requests_society_status_created_at
+ON payment_requests (society_id, status, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_expense_requests_society_status_created_at
+ON expense_requests (society_id, status, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_society_members_user_status
+ON society_members (user_id, status);
+
+CREATE INDEX IF NOT EXISTS idx_society_members_society_status
+ON society_members (society_id, status);
+
+-- Optional: prevent negative/zero transaction amounts
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'payment_requests_positive_amount'
+  ) THEN
+    ALTER TABLE payment_requests
+      ADD CONSTRAINT payment_requests_positive_amount CHECK (amount > 0) NOT VALID;
+  END IF;
+END
+$$;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'expense_requests_positive_amount'
+  ) THEN
+    ALTER TABLE expense_requests
+      ADD CONSTRAINT expense_requests_positive_amount CHECK (amount > 0) NOT VALID;
+  END IF;
+END
+$$;
+
+-- -------------------------------------------------------------------
+-- Event/Fundraising Model
+-- -------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS society_events (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    society_id UUID NOT NULL REFERENCES societies(id) ON DELETE CASCADE,
+    title TEXT NOT NULL,
+    description TEXT,
+    event_type TEXT CHECK (event_type IN ('fundraising', 'meeting', 'announcement')) NOT NULL DEFAULT 'fundraising',
+    target_amount NUMERIC(15, 2),
+    starts_at TIMESTAMP WITH TIME ZONE,
+    ends_at TIMESTAMP WITH TIME ZONE,
+    created_by UUID REFERENCES profiles(id),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS event_contributions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    event_id UUID NOT NULL REFERENCES society_events(id) ON DELETE CASCADE,
+    payment_request_id UUID NOT NULL REFERENCES payment_requests(id) ON DELETE CASCADE,
+    amount NUMERIC(15, 2) NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_society_events_society_created_at
+ON society_events (society_id, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_event_contributions_event_id
+ON event_contributions (event_id);
+
+ALTER TABLE society_events ENABLE ROW LEVEL SECURITY;
+ALTER TABLE event_contributions ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "View events for members" ON society_events
+    FOR SELECT USING (is_society_member(society_id));
+
+CREATE POLICY "Create events by managers" ON society_events
+    FOR INSERT WITH CHECK (
+      EXISTS (
+        SELECT 1 FROM society_members sm
+        WHERE sm.society_id = society_events.society_id
+        AND sm.user_id = auth.uid()
+        AND sm.status = 'active'
+        AND sm.role_id IN (1, 2, 3)
+      )
+    );
+
+CREATE POLICY "View event contributions for members" ON event_contributions
+    FOR SELECT USING (
+      EXISTS (
+        SELECT 1
+        FROM society_events ev
+        WHERE ev.id = event_contributions.event_id
+        AND is_society_member(ev.society_id)
+      )
+    );
+
+-- -------------------------------------------------------------------
+-- Public Audit Comments (visible to all society members)
+-- -------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS transaction_comments (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    society_id UUID NOT NULL REFERENCES societies(id) ON DELETE CASCADE,
+    reference_type TEXT CHECK (reference_type IN ('payment', 'expense')) NOT NULL,
+    reference_id UUID NOT NULL,
+    user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+    comment TEXT NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_transaction_comments_society_ref_created
+ON transaction_comments (society_id, reference_type, reference_id, created_at DESC);
+
+ALTER TABLE transaction_comments ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "View transaction comments for members" ON transaction_comments
+    FOR SELECT USING (is_society_member(society_id));
+
+CREATE POLICY "Insert transaction comments for members" ON transaction_comments
+    FOR INSERT WITH CHECK (
+      is_society_member(society_id)
+      AND auth.uid() = user_id
+    );

@@ -5,7 +5,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 export const useSocieties = () => {
   const { user } = useAuthStore();
-  const { setSocieties, setActiveSociety } = useSocietyStore();
+  const { setSocieties, activeSociety } = useSocietyStore();
   const queryClient = useQueryClient();
 
   const fetchSocieties = useQuery({
@@ -221,6 +221,28 @@ export const useSocieties = () => {
     enabled: !!user?.id,
   });
 
+  const fetchSocietyMembers = useQuery({
+    queryKey: ['society-members', activeSociety?.id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('society_members')
+        .select(`
+          id,
+          role_id,
+          status,
+          user_id,
+          profiles (name, avatar_url)
+        `)
+        .eq('society_id', activeSociety?.id)
+        .eq('status', 'active')
+        .order('joined_at', { ascending: true });
+
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!activeSociety?.id,
+  });
+
   const manageMember = useMutation({
     mutationFn: async ({ memberId, status }: { memberId: string, status: 'active' | 'removed' }) => {
       const { error } = await supabase
@@ -236,6 +258,21 @@ export const useSocieties = () => {
     },
   });
 
+  const updateMemberRole = useMutation({
+    mutationFn: async ({ memberId, roleId }: { memberId: string, roleId: number }) => {
+      const { error } = await supabase
+        .from('society_members')
+        .update({ role_id: roleId })
+        .eq('id', memberId);
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['society-members', activeSociety?.id] });
+      queryClient.invalidateQueries({ queryKey: ['societies'] });
+    },
+  });
+
   return {
     ...fetchSocieties,
     createSociety,
@@ -244,5 +281,7 @@ export const useSocieties = () => {
     manageMember,
     searchPublicSocieties,
     joinSocietyById,
+    fetchSocietyMembers,
+    updateMemberRole,
   };
 };
